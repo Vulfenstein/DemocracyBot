@@ -4,7 +4,8 @@ Dictators are so overrated. Democracy bot takes away the power of the few and gi
 Well now you have the power of the people, call a vote, kick their ass out!
 
 ## Requirements 
-Will need discord developer account, create bot with connect and voice privileges and add token to .env file
+Will need discord developer account, create bot with connect and voice privileges and add token to .env file.
+Will need to create a gif folder in the root directory and modify which ones it sends on kick or no kick.
 
 ### Dotenv
 ```sh
