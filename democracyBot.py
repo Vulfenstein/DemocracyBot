@@ -1,12 +1,9 @@
-import asyncio
-import discord
 import os
-import datetime
 import time
 import random
-from discord.ext import commands
+import discord
 from dotenv import load_dotenv
-from threading import Timer
+from discord.ext import commands
 
 # Load bot token 
 load_dotenv()
@@ -23,11 +20,13 @@ voice_channel_name = 'General'
 isSleeping = False
 votingInProgess = False
 
-userStringToKick = ''
-userAccountToKick = ''
-allUsers = []
+userIds = []
+referenceIds = []
+userIdToKick = ''
+userWhoStartedVote = ''
 yesVotes = 0
 noVotes = 0
+memberAccountToKick = None
 
 # Bot start up 
 @bot.event
@@ -35,63 +34,93 @@ async def on_ready():
     print('Logged in as {0.user}'.format(bot))
     await bot.change_presence(activity=discord.Game('Scales of Justice'))
 
-# Sleep 30 seconds between calls 
-def allowAction():
-    global isSleeping
-    print('done sleeping')
-    isSleeping = False
-
-resetTimer = Timer(30, allowAction) 
-
 #--------------------------------------------------------------------#
 # Begin voting procedure
 #--------------------------------------------------------------------#
 @bot.command()
 async def vote(ctx):
-    global userStringToKick
+    global userIdToKick
     global votingInProgess
+    global userWhoStartedVote
+    rawSearchString = ''
+    userIdValid = False
+
     if not votingInProgess:
-        await ctx.send("Who would you like to vote to kick")
-        userStringToKick = await bot.wait_for('message', check=lambda message: message.author == ctx.author)
-        userStringToKick = userStringToKick.content
-        votingInProgess = True
-        await checkForUser(ctx)
+        await ctx.send("Who would you like to vote to kick?")
+        rawSearchString = await bot.wait_for('message', check=lambda message: message.author == ctx.author)
+        userWhoStartedVote = ctx.author.name
+        userIdToKick = rawSearchString.content
+
+        # Remove mention tags, get user id
+        if '<@!' in userIdToKick:
+            userIdToKick = userIdToKick.replace('<@!', '').replace('>', '')
+            userIdValid = True
+        elif '<@&' in userIdToKick:
+            userIdToKick = userIdToKick.replace('<@&', '').replace('>', '')
+            userIdValid = True
+        elif '<@' in userIdToKick:
+            userIdToKick = userIdToKick.replace('<@', '').replace('>', '')
+            userIdValid = True
+        else:
+            await ctx.send("Please use the @{username} for electing victim.")
+            userIdValid = False
+
+        # Check if user typed more than just @username
+        if userIdToKick.isnumeric():
+            userIdValid = True
+        else:
+            userIdValid = False
+        
+        # If username is valid, move on, otherwise end here.
+        if userIdValid:
+            votingInProgess = True
+            await checkForUser(ctx, rawSearchString)
+        else:
+            await ctx.send("Username invalid, double check spelling.")
+
     else: 
         await ctx.send("Conclude current vote before starting a new one.")
 
 #--------------------------------------------------------------------#
 # Check that user to be voted on is currently in voice call/exists
 #--------------------------------------------------------------------#
-async def checkForUser(ctx):
-    global userStringToKick
-    global userAccountToKick
-    global allUsers
-    found = False
-    allUsers = []
+async def checkForUser(ctx, rawSearchString):
+    global userIdToKick
+    global votingInProgess
+    global userIds
+    global referenceIds
+    global memberAccountToKick
+    userInChat = False
+    userIds = []
+
     voice_channel = discord.utils.get(ctx.guild.channels, name=voice_channel_name)
 
+    # Loop through all members in voice channel with two goals
+        # 1. Add all current voice member ids to list
+        # 2. Check that user elected for kick is currently in voice channel
     for member in voice_channel.members:
-        reducedName = member.name.split('#')
-        allUsers.append(reducedName)
-        if reducedName[0].lower() in userStringToKick.lower():
-            userAccountToKick = member
-            found = True
+        userIds.append(member.id)
+        referenceIds.append(member.id)
+        if member.id == int(userIdToKick):
+            userInChat = True
+            memberAccountToKick = member
 
-    if found :
+    if userInChat :
         await votingProcess(ctx)
     else:
-        await ctx.send("User " + userStringToKick + " does not appear to be in the call")
+        votingInProgess = False
+        await ctx.send("User " + rawSearchString.content + " does not appear to be in the call")
         return
-
 
 #--------------------------------------------------------------------#
 # Taly votes for all users in voice channel
 #--------------------------------------------------------------------#
 async def votingProcess(ctx):
-    global userStringToKick
-    global allUsers
+    global userIdToKick
+    global userIds
     global yesVotes
     global noVotes
+    global userWhoStartedVote
     yesVotes = 0
     noVotes = 0
 
@@ -100,16 +129,16 @@ async def votingProcess(ctx):
 
     # ensure each user gets only one vote
     def check(msg):
-        reducedName = msg.author.name.split('#')
-        if reducedName in allUsers:
-            index = allUsers.index(reducedName)
-            allUsers.pop(index)
+        if msg.author.id in userIds:
+            index = userIds.index(msg.author.id)
+            userIds.pop(index)
             return True
-        return False
+        return False        
 
     # While users need to cast vote, collect votes and remove users from need to vote list
-    await ctx.send("A vote to remove " + userStringToKick + " has been started \n (Y)es or (N)o")
-    while allUsers != []:
+    name = await bot.fetch_user(userIdToKick)
+    await ctx.send("A vote to remove " + name.display_name + " has been started by " + userWhoStartedVote +". Please vote now.\n(Y)es or (N)o")
+    while userIds != []:
         msg = await bot.wait_for("message")
         if msg.content.lower() == 'y' or msg.content.lower() == 'yes':
             if check(msg):
@@ -130,21 +159,29 @@ async def determineResults(ctx):
     global votingInProgess
     global yesVotes
     global noVotes
-    global userAccountToKick
+    global memberAccountToKick
 
-    print(userAccountToKick)
+    name = await bot.fetch_user(userIdToKick)
     await ctx.send("Results:\nYes votes: " + str(yesVotes) +"\nNo votes: " + str(noVotes))
     if yesVotes > noVotes:
-        print('you will be kicked')
-        # userAccountToKick.setVoiceChannel(None)
+        await ctx.send(file=discord.File('gifs\goodbye.gif'))
+        await ctx.send('The people have spoken, ' + name.display_name + ' will be kicked.')
+        time.sleep(2)
+        await memberAccountToKick.move_to(None)
     elif yesVotes < noVotes:
-        print('you will NOT be kicked')
+        await ctx.send(file=discord.File('gifs\lucky.gif'))
+        await ctx.send('The people have spoken, ' + name.display_name + ' will not kicked.')
     else:
         fate = random.randint(0, 1)
+        await ctx.send("We have a tie! Fate will now decide...")
+        time.sleep(3)
         if fate == 1:
-            await ctx.send('Fate has decided to kick you')
+            await ctx.send(file=discord.File('gifs\goodbye.gif'))
+            await ctx.send('Fate has decided to kick ' + name.display_name)
+            await memberAccountToKick.move_to(None)
         else:
-            await ctx.send('Fate has decided to spare you')
+            await ctx.send(file=discord.File('gifs\lucky.gif'))
+            await ctx.send('Fate has decided to spare ' + name.display_name)
     votingInProgess = False
 
 #--------------------------------------------------------------------#
@@ -156,8 +193,22 @@ async def status(ctx):
     if votingInProgess:
         await ctx.send("Yes votes: " + str(yesVotes) +"\nNo votes: " + str(noVotes))
         await ctx.send("\nThe following users still need to vote: \n")
-        for member in allUsers:
-            await ctx.send(member)
+        for member in userIds:
+            name = await bot.fetch_user(member)
+            await ctx.send(name.display_name)
+    else:
+        await ctx.send("No vote is currently in progress.")
+        
+
+#--------------------------------------------------------------------#
+# Reset vote loop
+#--------------------------------------------------------------------#
+@bot.command()
+async def cancel(ctx):
+    global userIds
+    global votingInProgess
+    if votingInProgess:
+        userIds = []
     else:
         await ctx.send("No vote is currently in progress.")
 
@@ -166,7 +217,14 @@ async def status(ctx):
 #--------------------------------------------------------------------#
 @bot.command()
 async def help(ctx):
-    await ctx.send("$vote initiates process \n$status returns current state of vote and users that still need to vote \nWhen typing name to kick or casting vote, capitialization is NOT important \nExamples 'y', 'YES', 'Y', 'yEs'")
+    await ctx.send("""```$vote``` Initiates vote process.\
+    \n```$status``` Returns current state of vote and users that still need to vote. \
+    \n```$cancel``` Ends vote loop \
+    \n```General Info``` Only user who calls vote can elect user for kick. \
+    \nUse @{username} for selecting user. \
+    \nWhen casting vote, capitilzation is NOT important. \
+    \nExamples 'y', 'YES', 'Y', 'yEs' \
+    """)
 
 # Run bot
 bot.run(TOKEN)
