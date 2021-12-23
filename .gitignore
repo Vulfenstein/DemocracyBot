@@ -1,0 +1,5 @@
+/.env
+/sounds
+/.vscode
+/env
+pyvenv.cfg
