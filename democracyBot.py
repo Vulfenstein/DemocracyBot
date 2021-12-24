@@ -26,6 +26,7 @@ userIdToKick = ''
 userWhoStartedVote = ''
 yesVotes = 0
 noVotes = 0
+totalVoters = 0
 memberAccountToKick = None
 
 # Bot start up 
@@ -90,6 +91,7 @@ async def checkForUser(ctx, rawSearchString):
     global userIds
     global referenceIds
     global memberAccountToKick
+    global totalVoters
     userInChat = False
     userIds = []
 
@@ -104,6 +106,8 @@ async def checkForUser(ctx, rawSearchString):
         if member.id == int(userIdToKick):
             userInChat = True
             memberAccountToKick = member
+
+    totalVoters = len(userIds)
 
     if userInChat :
         await votingProcess(ctx)
@@ -150,6 +154,11 @@ async def votingProcess(ctx):
                 noVotes = noVotes + 1
             else: 
                 await ctx.send(ctx.author.name + " you already voted.")
+
+        # check if we have a end case (majority)
+        if (yesVotes > (totalVoters /2)) or (noVotes > (totalVoters/2)):
+            userIds = []
+            
     await determineResults(ctx)
 
 #--------------------------------------------------------------------#
