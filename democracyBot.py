@@ -185,11 +185,11 @@ async def determineResults(ctx):
         await ctx.send("We have a tie! Fate will now decide...")
         time.sleep(3)
         if fate == 1:
-            await ctx.send(file=discord.File('gifs\goodbye.gif'))
+            await ctx.send(file=discord.File('gifs\kick.gif'))
             await ctx.send('Fate has decided to kick ' + name.display_name)
             await memberAccountToKick.move_to(None)
         else:
-            await ctx.send(file=discord.File('gifs\lucky.gif'))
+            await ctx.send(file=discord.File('gifs\save.gif'))
             await ctx.send('Fate has decided to spare ' + name.display_name)
     votingInProgess = False
 
