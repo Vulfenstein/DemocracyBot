@@ -9,17 +9,15 @@ from discord.ext import commands
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
-# Declare bot, commands use '$'
-bot = commands.Bot(command_prefix='$')
+# Declare bot, commands use '\'
+bot = commands.Bot(command_prefix='\\')
 bot.remove_command('help')
 
 # Assign voice channel here #
 voice_channel_name = 'General'
 
-# flag for sleep recharge, and vote in progress
-isSleeping = False
-votingInProgess = False
 
+votingInProgess = False
 userIds = []
 referenceIds = []
 userIdToKick = ''
@@ -39,18 +37,22 @@ async def on_ready():
 # Begin voting procedure
 #--------------------------------------------------------------------#
 @bot.command()
-async def vote(ctx):
+async def vote(ctx, arg1):
     global userIdToKick
     global votingInProgess
     global userWhoStartedVote
     rawSearchString = ''
     userIdValid = False
 
+    if arg1 == None or arg1 == '':
+        await ctx.send("Please provide username to kick.")
+        return
+
     if not votingInProgess:
-        await ctx.send("Who would you like to vote to kick?")
-        rawSearchString = await bot.wait_for('message', check=lambda message: message.author == ctx.author)
+        votingInProgess = True
+        rawSearchString = arg1
         userWhoStartedVote = ctx.author.name
-        userIdToKick = rawSearchString.content
+        userIdToKick = rawSearchString
 
         # Remove mention tags, get user id
         if '<@!' in userIdToKick:
@@ -74,10 +76,10 @@ async def vote(ctx):
         
         # If username is valid, move on, otherwise end here.
         if userIdValid:
-            votingInProgess = True
             await checkForUser(ctx, rawSearchString)
         else:
             await ctx.send("Username invalid, double check spelling.")
+            votingInProgess = False
 
     else: 
         await ctx.send("Conclude current vote before starting a new one.")
@@ -113,7 +115,7 @@ async def checkForUser(ctx, rawSearchString):
         await votingProcess(ctx)
     else:
         votingInProgess = False
-        await ctx.send("User " + rawSearchString.content + " does not appear to be in the call")
+        await ctx.send("User " + rawSearchString + " does not appear to be in the call")
         return
 
 #--------------------------------------------------------------------#
@@ -128,9 +130,6 @@ async def votingProcess(ctx):
     yesVotes = 0
     noVotes = 0
 
-    # Grab voice channel info
-    voice_channel = discord.utils.get(ctx.guild.channels, name=voice_channel_name)
-
     # ensure each user gets only one vote
     def check(msg):
         if msg.author.id in userIds:
@@ -143,6 +142,9 @@ async def votingProcess(ctx):
     name = await bot.fetch_user(userIdToKick)
     await ctx.send("A vote to remove " + name.display_name + " has been started by " + userWhoStartedVote +". Please vote now.\n(Y)es or (N)o")
     while userIds != []:
+        ##
+        ## Check users we are still waiting for a vote have not left the call.
+        ##
         msg = await bot.wait_for("message")
         if msg.content.lower() == 'y' or msg.content.lower() == 'yes':
             if check(msg):
@@ -165,6 +167,7 @@ async def votingProcess(ctx):
 # Taly votes for all users in voice channel
 #--------------------------------------------------------------------#
 async def determineResults(ctx):
+    global userIdToKick
     global votingInProgess
     global yesVotes
     global noVotes
@@ -226,13 +229,13 @@ async def cancel(ctx):
 #--------------------------------------------------------------------#
 @bot.command()
 async def help(ctx):
-    await ctx.send("""```$vote``` Initiates vote process.\
-    \n```$status``` Returns current state of vote and users that still need to vote. \
-    \n```$cancel``` Ends vote loop \
-    \n```General Info``` Only user who calls vote can elect user for kick. \
-    \nUse @{username} for selecting user. \
-    \nWhen casting vote, capitilzation is NOT important. \
+    await ctx.send("""```\\vote @username``` Start vote with user to vote on. Use @username when selecting person. If username is blank or in wrong format, it will return an error message.\
+    \n\n```\\status```Statistics for active vote. Returns error message if no active vote. \
+    \n\n```\\cancel```End current vote where it stands. Returns error message if no active vote. \
+    \n\n```General Info```When a vote has started all members in the voice channel at that time can cast a vote. \
+    \n\nWhen casting vote, capitilzation is NOT important. \
     \nExamples 'y', 'YES', 'Y', 'yEs' \
+    \n\nOnly user who calls vote can elect user for kick. \
     """)
 
 # Run bot
