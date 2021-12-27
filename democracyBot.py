@@ -2,6 +2,8 @@ import os
 import time
 import random
 import discord
+import datetime
+from discord import user
 from dotenv import load_dotenv
 from discord.ext import commands
 
@@ -18,8 +20,9 @@ voice_channel_name = 'General'
 
 
 votingInProgess = False
+votingTimedOut = False
 userIds = []
-referenceIds = []
+userAccounts = []
 userIdToKick = ''
 userWhoStartedVote = ''
 yesVotes = 0
@@ -41,12 +44,12 @@ async def vote(ctx, arg1):
     global userIdToKick
     global votingInProgess
     global userWhoStartedVote
+    global votingTimedOut
     rawSearchString = ''
     userIdValid = False
+    votingTimedOut = False
 
-    if arg1 == None or arg1 == '':
-        await ctx.send("Please provide username to kick.")
-        return
+    print(ctx.author.name + " called vote on " + arg1 + " at " + str(datetime.datetime.now()))
 
     if not votingInProgess:
         votingInProgess = True
@@ -91,11 +94,12 @@ async def checkForUser(ctx, rawSearchString):
     global userIdToKick
     global votingInProgess
     global userIds
-    global referenceIds
     global memberAccountToKick
     global totalVoters
+    global userAccounts
     userInChat = False
     userIds = []
+    userAccounts = []
 
     voice_channel = discord.utils.get(ctx.guild.channels, name=voice_channel_name)
 
@@ -104,7 +108,7 @@ async def checkForUser(ctx, rawSearchString):
         # 2. Check that user elected for kick is currently in voice channel
     for member in voice_channel.members:
         userIds.append(member.id)
-        referenceIds.append(member.id)
+        userAccounts.append(member)
         if member.id == int(userIdToKick):
             userInChat = True
             memberAccountToKick = member
@@ -127,8 +131,10 @@ async def votingProcess(ctx):
     global yesVotes
     global noVotes
     global userWhoStartedVote
+    global votingTimedOut
     yesVotes = 0
     noVotes = 0
+    timeout = time.time() + 60
 
     # ensure each user gets only one vote
     def check(msg):
@@ -140,8 +146,8 @@ async def votingProcess(ctx):
 
     # While users need to cast vote, collect votes and remove users from need to vote list
     name = await bot.fetch_user(userIdToKick)
-    await ctx.send("A vote to remove " + name.display_name + " has been started by " + userWhoStartedVote +". Please vote now.\n(Y)es or (N)o")
-    while userIds != []:
+    await ctx.send("A vote to remove " + name.display_name + " has been started by " + userWhoStartedVote +".\n```Vote now```\n(Y)es or (N)o")
+    while userIds != [] and time.time() < timeout:
         ##
         ## Check users we are still waiting for a vote have not left the call.
         ##
@@ -149,18 +155,24 @@ async def votingProcess(ctx):
         if msg.content.lower() == 'y' or msg.content.lower() == 'yes':
             if check(msg):
                 yesVotes = yesVotes + 1
+                timeout = time.time() + 60
             else: 
                 await ctx.send(ctx.author.name + " you already voted.")
         elif msg.content.lower() == 'n' or msg.content.lower() == 'no':
             if check(msg):
                 noVotes = noVotes + 1
+                timeout = time.time() + 60
             else: 
                 await ctx.send(ctx.author.name + " you already voted.")
 
-        # check if we have a end case (majority)
+        # check if we have an end case
         if (yesVotes > (totalVoters /2)) or (noVotes > (totalVoters/2)):
             userIds = []
             
+    if time.time() > timeout:
+        votingTimedOut = True
+        print('voting time out was set.')
+        print("Vote timer expired: NULL VOTE.")
     await determineResults(ctx)
 
 #--------------------------------------------------------------------#
@@ -169,31 +181,47 @@ async def votingProcess(ctx):
 async def determineResults(ctx):
     global userIdToKick
     global votingInProgess
+    global votingTimedOut
     global yesVotes
     global noVotes
+    global userAccounts
     global memberAccountToKick
+    wasKicked = False
 
-    name = await bot.fetch_user(userIdToKick)
-    await ctx.send("Results:\nYes votes: " + str(yesVotes) +"\nNo votes: " + str(noVotes))
-    if yesVotes > noVotes:
-        await ctx.send(file=discord.File('gifs/goodbye.gif'))
-        await ctx.send('The people have spoken, ' + name.display_name + ' will be kicked.')
-        time.sleep(2)
-        await memberAccountToKick.move_to(None)
-    elif yesVotes < noVotes:
-        await ctx.send(file=discord.File('gifs/lucky.gif'))
-        await ctx.send('The people have spoken, ' + name.display_name + ' will not kicked.')
-    else:
-        fate = random.randint(0, 1)
-        await ctx.send("We have a tie! Fate will now decide...")
-        time.sleep(3)
-        if fate == 1:
-            await ctx.send(file=discord.File('gifs/kick.gif'))
-            await ctx.send('Fate has decided to kick ' + name.display_name)
+    if not votingTimedOut:
+        name = await bot.fetch_user(userIdToKick)
+        await ctx.send("Results:\nYes votes: " + str(yesVotes) +"\nNo votes: " + str(noVotes))
+        if yesVotes == 0 and noVotes == 0:
+            await ctx.send("No one voted. All users will be kicked...")
+            time.sleep(2)
+            for user in userAccounts:
+                await user.move_to(None)
+        elif yesVotes > noVotes:
+            wasKicked = True
+            await ctx.send(file=discord.File('gifs/loser.gif'))
+            await ctx.send('The people have spoken, ' + name.display_name + ' will be kicked.')
+            time.sleep(2)
             await memberAccountToKick.move_to(None)
+        elif yesVotes < noVotes:
+            await ctx.send(file=discord.File('gifs/lucky.gif'))
+            await ctx.send('The people have spoken, ' + name.display_name + ' will not kicked.')
         else:
-            await ctx.send(file=discord.File('gifs/save.gif'))
-            await ctx.send('Fate has decided to spare ' + name.display_name)
+            fate = random.randint(0, 1)
+            await ctx.send("We have a tie! Fate will now decide...")
+            time.sleep(3)
+            if fate == 1:
+                wasKicked = True
+                await ctx.send(file=discord.File('gifs/kick.gif'))
+                await ctx.send('Fate has decided to kick ' + name.display_name)
+                await memberAccountToKick.move_to(None)
+            else:
+                await ctx.send(file=discord.File('gifs/save.gif'))
+                await ctx.send('Fate has decided to spare ' + name.display_name)
+        if wasKicked:
+            print(str(memberAccountToKick) +" was kicked at " + str(datetime.datetime.now()))
+        else:
+            print(str(memberAccountToKick) +" was NOT kicked at " + str(datetime.datetime.now()))
+
     votingInProgess = False
 
 #--------------------------------------------------------------------#
