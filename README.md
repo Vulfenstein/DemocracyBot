@@ -4,7 +4,7 @@ Dictators are so overrated. Democracy bot takes away the power of the few and gi
 Well now you have the power of the people, call a vote, kick their ass out!
 
 ## Requirements 
-Will need discord developer account, create bot with send/read messages and move members permissions.
+Will need discord developer account, create bot with send/read messages and move members permissions. Add bot token to .env file TOKEN={bot token}
 
 ### Dotenv
 ```sh
