@@ -6,6 +6,10 @@ RUN pip install python-dotenv
 
 RUN python3 -m pip install -U discord.py
 
+RUN useradd -u 8877 botMan
+
+USER botMan
+
 ADD democracyBot.py /app
 
 ADD gifs /app/gifs/
